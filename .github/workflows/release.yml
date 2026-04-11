@@ -37,6 +37,14 @@ jobs:
             os: macos-latest
             use_cross: false
             install_deps: echo "No extra deps needed"
+          - target: aarch64-linux-android
+            os: ubuntu-latest
+            use_cross: true
+            install_deps: echo "Using cross"
+          - target: x86_64-linux-android
+            os: ubuntu-latest
+            use_cross: true
+            install_deps: echo "Using cross"
 
     runs-on: ${{ matrix.os }}
     steps:

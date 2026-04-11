@@ -46,12 +46,21 @@ done
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 ARCH=$(uname -m)
 
+IS_TERMUX=0
+if [ -n "$TERMUX_VERSION" ] || [ -d "/data/data/com.termux" ]; then
+    IS_TERMUX=1
+fi
+
 case "$OS" in
     darwin)
         PLATFORM="macOS"
         ;;
     linux)
-        PLATFORM="Linux"
+        if [ "$IS_TERMUX" = "1" ]; then
+            PLATFORM="Android"
+        else
+            PLATFORM="Linux"
+        fi
         ;;
     *)
         error "Unsupported operating system: $OS"
@@ -109,8 +118,9 @@ if [ "$PLATFORM" = "macOS" ]; then
     fi
 fi
 
-TARGET=""
-if [ "$PLATFORM" = "Linux" ]; then
+if [ "$PLATFORM" = "Android" ]; then
+    TARGET="${ARCH_NAME}-linux-android"
+elif [ "$PLATFORM" = "Linux" ]; then
     if [ "$USE_GLIBC" = "1" ]; then
         TARGET="${ARCH_NAME}-unknown-linux-gnu"
     else
