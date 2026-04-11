@@ -11,40 +11,49 @@ permissions:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
             use_cross: false
+            use_ndk: false
             install_deps: sudo apt-get update && sudo apt-get install -y musl-tools
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             use_cross: false
+            use_ndk: false
             install_deps: echo "No extra deps needed"
           - target: aarch64-unknown-linux-musl
             os: ubuntu-latest
             use_cross: true
+            use_ndk: false
             install_deps: echo "Using cross"
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
             use_cross: true
+            use_ndk: false
             install_deps: echo "Using cross"
           - target: x86_64-apple-darwin
             os: macos-latest
             use_cross: false
+            use_ndk: false
             install_deps: echo "No extra deps needed"
           - target: aarch64-apple-darwin
             os: macos-latest
             use_cross: false
+            use_ndk: false
             install_deps: echo "No extra deps needed"
           - target: aarch64-linux-android
             os: ubuntu-latest
-            use_cross: true
-            install_deps: echo "Using cross"
+            use_cross: false
+            use_ndk: true
+            install_deps: echo "Using cargo-ndk"
           - target: x86_64-linux-android
             os: ubuntu-latest
-            use_cross: true
-            install_deps: echo "Using cross"
+            use_cross: false
+            use_ndk: true
+            install_deps: echo "Using cargo-ndk"
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -62,18 +71,35 @@ jobs:
         if: matrix.use_cross
         run: cargo install cross
 
+      - name: Setup Android NDK
+        if: matrix.use_ndk
+        run: |
+          cargo install cargo-ndk
+          # Use the NDK from the GitHub Actions runner
+          ANDROID_NDK_ROOT="${ANDROID_HOME}/ndk/$(ls ${ANDROID_HOME}/ndk/ | head -1)"
+          echo "ANDROID_NDK_ROOT=${ANDROID_NDK_ROOT}" >> $GITHUB_ENV
+          echo "Using NDK: ${ANDROID_NDK_ROOT}"
+
       - name: Build
         run: |
           if [ "${{ matrix.use_cross }}" = "true" ]; then
             cross build --release --target ${{ matrix.target }}
+          elif [ "${{ matrix.use_ndk }}" = "true" ]; then
+            cargo ndk --target ${{ matrix.target }} build --release
           else
             cargo build --release --target ${{ matrix.target }}
           fi
 
       - name: Strip binary
         run: |
-          if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
-            strip target/${{ matrix.target }}/release/orai || true
+          if [ "${{ matrix.use_ndk }}" = "true" ]; then
+            ANDROID_NDK_ROOT="${ANDROID_HOME}/ndk/$(ls ${ANDROID_HOME}/ndk/ | head -1)"
+            TOOLCHAIN="${ANDROID_NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64"
+            if [ "${{ matrix.target }}" = "aarch64-linux-android" ]; then
+              "${TOOLCHAIN}/bin/aarch64-linux-android-strip" target/${{ matrix.target }}/release/orai || true
+            else
+              "${TOOLCHAIN}/bin/x86_64-linux-android-strip" target/${{ matrix.target }}/release/orai || true
+            fi
           else
             strip target/${{ matrix.target }}/release/orai || true
           fi
