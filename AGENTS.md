@@ -70,24 +70,8 @@ src/
 - **Install script:** `https://ergofobe.github.io/orai/install.sh`
 - **GitHub Actions:** `.github/workflows/release.yml` builds on tag push, `.github/workflows/pages.yml` deploys landing page
 
-## Repositories
-
-- **orai:** `~/src/orai` → https://github.com/ergofobe/orai
-- **homebrew-orai:** `~/src/homebrew-orai` → https://github.com/ergofobe/homebrew-orai
-  - Always use `~/src/homebrew-orai` (NOT `/tmp`) when updating the Homebrew formula
-  - Update Formula/orai.rb with version + SHA256 after each release
-
-## Release Process
-
-1. Bump version in `Cargo.toml`
-2. Commit and push to main
-3. Tag: `git tag v0.x.y && git push origin v0.x.y`
-4. Wait for CI to build all 8 targets and create GitHub Release
-5. Download macOS binary, compute SHA256, update `~/src/homebrew-orai/Formula/orai.rb`
-6. Commit and push homebrew-orai
-
 ## Known Issues
 
 - OpenRouter may return SSE chunks even for `stream:false` requests (especially free models). `parse_sse_response()` handles this.
-- `HOMEBREW_TAP_TOKEN` secret not set in GitHub — Homebrew formula must be updated manually from `~/src/homebrew-orai`
+- `HOMEBREW_TAP_TOKEN` secret not set in GitHub — Homebrew formula must be updated manually
 - macOS `sed -i` requires `''` arg (BSD sed) — handled in release.yml
