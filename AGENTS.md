@@ -4,6 +4,17 @@
 
 orai is a Rust CLI tool for interacting with OpenRouter AI models from the command line. It supports one-shot prompts, REPL chat, and a full TUI interface with streaming, tool calling, file attachments, and markdown rendering.
 
+## Required Environment
+
+`OPENROUTER_API_KEY` must be set before running or building orai. If it is not set, verify it is exported and instruct the user:
+
+1. Get an API key at https://openrouter.ai/settings/keys
+2. Export it in their shell profile:
+   - bash: `echo 'export OPENROUTER_API_KEY=your-key-here' >> ~/.bashrc && source ~/.bashrc`
+   - zsh: `echo 'export OPENROUTER_API_KEY=your-key-here' >> ~/.zshrc && source ~/.zshrc`
+   - fish: `echo 'set -gx OPENROUTER_API_KEY your-key-here' >> ~/.config/fish/config.fish`
+3. Verify: `echo $OPENROUTER_API_KEY`
+
 ## Build & Run
 
 ```bash
@@ -49,10 +60,6 @@ src/
 - **Default model:** `openrouter/free`
 - **Max agentic loop iterations:** 25
 - **Versioning:** 0.x.0 for features, 0.x.1+ for bug fixes
-
-## Environment
-
-- `OPENROUTER_API_KEY` — Required. API key for OpenRouter.
 
 ## Conventions
 
