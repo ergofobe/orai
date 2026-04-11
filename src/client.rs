@@ -281,7 +281,10 @@ impl OpenRouterClient {
                     bail!("OpenRouter API error: {} - {}", retry_status, retry_body);
                 }
 
-                let response_json: serde_json::Value = serde_json::from_str(&retry_body)
+                if retry_body.contains("data:") {
+                    return self.parse_sse_response(&retry_body);
+                }
+                let response_json: serde_json::Value = serde_json::from_str(extract_json(&retry_body))
                     .context(format!("Failed to parse API response: {}", &retry_body[..retry_body.len().min(500)]))?;
                 return self.parse_response(response_json);
             }
@@ -289,9 +292,62 @@ impl OpenRouterClient {
             bail!("OpenRouter API error: {} - {}", status, body_text);
         }
 
-        let response_json: serde_json::Value = serde_json::from_str(&body_text)
+        if body_text.contains("data:") && body_text.contains("chat.completion.chunk") {
+            return self.parse_sse_response(&body_text);
+        }
+
+        let response_json: serde_json::Value = serde_json::from_str(extract_json(&body_text))
             .context(format!("Failed to parse API response ({} bytes): {}", body_text.len(), &body_text[..body_text.len().min(500)]))?;
         self.parse_response(response_json)
+    }
+
+    fn parse_sse_response(&self, body_text: &str) -> Result<Message> {
+        let mut content = String::new();
+        let mut role = "assistant".to_string();
+        let mut tool_calls_acc = AccumulatedToolCalls::new();
+
+        for line in body_text.lines() {
+            if let Some(data) = parse_sse_line(line) {
+                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&data) {
+                    if let Some(choices) = parsed.get("choices").and_then(|c| c.as_array()) {
+                        if let Some(choice) = choices.first() {
+                            if let Some(delta) = choice.get("delta") {
+                                if let Some(r) = delta.get("role").and_then(|v| v.as_str()) {
+                                    role = r.to_string();
+                                }
+                                if let Some(c) = delta.get("content").and_then(|v| v.as_str()) {
+                                    content.push_str(c);
+                                }
+                                if let Some(tcs) = delta.get("tool_calls") {
+                                    let deltas: Vec<crate::stream::ToolCallDelta> =
+                                        serde_json::from_value(tcs.clone()).unwrap_or_default();
+                                    tool_calls_acc.apply_delta(deltas);
+                                }
+                            }
+                            if let Some(_reason) = choice.get("finish_reason").and_then(|v| v.as_str()) {
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut msg = Message {
+            role,
+            content: if content.is_empty() {
+                None
+            } else {
+                Some(serde_json::Value::String(content))
+            },
+            tool_calls: None,
+            tool_call_id: None,
+        };
+
+        if !tool_calls_acc.is_empty() {
+            msg.tool_calls = Some(tool_calls_acc.into_tool_calls());
+        }
+
+        Ok(msg)
     }
 
     fn parse_response(&self, response_json: serde_json::Value) -> Result<Message> {
@@ -425,6 +481,16 @@ fn truncate_display(s: &str, max_len: usize) -> String {
         format!("{}...", &single_line[..max_len])
     } else {
         single_line
+    }
+}
+
+fn extract_json(body: &str) -> &str {
+    if let Some(pos) = body.find('{') {
+        &body[pos..]
+    } else if let Some(pos) = body.find('[') {
+        &body[pos..]
+    } else {
+        body.trim()
     }
 }
 
