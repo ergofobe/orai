@@ -101,41 +101,38 @@ jobs:
           generate_release_notes: true
 
       - name: Update Homebrew tap
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
           TAG="${GITHUB_REF_NAME}"
           VERSION="${TAG#v}"
           
-          # Download all artifacts for SHA256
-          mkdir -p /tmp/hashes
-          cd artifacts
+          if [ -z "$HOMEBREW_TAP_TOKEN" ]; then
+            echo "HOMEBREW_TAP_TOKEN not set, skipping Homebrew tap update"
+            echo "To enable automatic tap updates, create a PAT with repo scope and add it as a secret named HOMEBREW_TAP_TOKEN"
+            exit 0
+          fi
           
-          for f in *.tar.gz; do
-            SHA=$(shasum -a 256 "$f" | cut -d' ' -f1)
-            echo "$f: $SHA"
-          done
+          X86_64_MACOS_SHA=$(shasum -a 256 artifacts/orai-x86_64-apple-darwin.tar.gz | cut -d' ' -f1)
+          ARM64_MACOS_SHA=$(shasum -a 256 artifacts/orai-aarch64-apple-darwin.tar.gz | cut -d' ' -f1)
+          X86_64_LINUX_MUSL_SHA=$(shasum -a 256 artifacts/orai-x86_64-unknown-linux-musl.tar.gz | cut -d' ' -f1)
+          AARCH64_LINUX_MUSL_SHA=$(shasum -a 256 artifacts/orai-aarch64-unknown-linux-musl.tar.gz | cut -d' ' -f1)
+          X86_64_LINUX_GNU_SHA=$(shasum -a 256 artifacts/orai-x86_64-unknown-linux-gnu.tar.gz | cut -d' ' -f1)
+          AARCH64_LINUX_GNU_SHA=$(shasum -a 256 artifacts/orai-aarch64-unknown-linux-gnu.tar.gz | cut -d' ' -f1)
           
-          # Clone the homebrew tap
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git clone "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/ergofobe/homebrew-orai.git" /tmp/homebrew-orai
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/ergofobe/homebrew-orai.git" /tmp/homebrew-orai
           cd /tmp/homebrew-orai
           
-          # Generate SHA256 hashes
-          X86_64_MACOS_SHA=$(shasum -a 256 "${GITHUB_WORKSPACE}/artifacts/orai-x86_64-apple-darwin.tar.gz" | cut -d' ' -f1 || echo "pending")
-          ARM64_MACOS_SHA=$(shasum -a 256 "${GITHUB_WORKSPACE}/artifacts/orai-aarch64-apple-darwin.tar.gz" | cut -d' ' -f1 || echo "pending")
-          X86_64_LINUX_MUSL_SHA=$(shasum -a 256 "${GITHUB_WORKSPACE}/artifacts/orai-x86_64-unknown-linux-musl.tar.gz" | cut -d' ' -f1 || echo "pending")
-          AARCH64_LINUX_MUSL_SHA=$(shasum -a 256 "${GITHUB_WORKSPACE}/artifacts/orai-aarch64-unknown-linux-musl.tar.gz" | cut -d' ' -f1 || echo "pending")
-          X86_64_LINUX_GNU_SHA=$(shasum -a 256 "${GITHUB_WORKSPACE}/artifacts/orai-x86_64-unknown-linux-gnu.tar.gz" | cut -d' ' -f1 || echo "pending")
-          AARCH64_LINUX_GNU_SHA=$(shasum -a 256 "${GITHUB_WORKSPACE}/artifacts/orai-aarch64-unknown-linux-gnu.tar.gz" | cut -d' ' -f1 || echo "pending")
-          
           mkdir -p Formula
-          cat > Formula/orai.rb << 'FORMULA_EOF'
+          cat > Formula/orai.rb <<EOF
           class Orai < Formula
             desc "CLI tool for OpenRouter AI models"
             homepage "https://ergofobe.github.io/orai"
-            url "https://github.com/ergofobe/orai/releases/download/#{TAG}/orai-x86_64-apple-darwin.tar.gz"
-            sha256 "#{X86_64_MACOS_SHA}"
-            version "#{VERSION}"
+            url "https://github.com/ergofobe/orai/releases/download/${TAG}/orai-x86_64-apple-darwin.tar.gz"
+            sha256 "${X86_64_MACOS_SHA}"
+            version "${VERSION}"
             license "MIT"
           
             def install
@@ -143,11 +140,11 @@ jobs:
             end
           
             test do
-              system "#{bin}/orai", "--version"
+              system "\#{bin}/orai", "--version"
             end
           end
-          FORMULA_EOF
+          EOF
           
           git add .
-          git commit -m "Update orai to #{TAG}" || true
+          git commit -m "Update orai to ${TAG}" || true
           git push
