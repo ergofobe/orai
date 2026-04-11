@@ -1,0 +1,29 @@
+[package]
+name = "orai"
+version = "0.1.0"
+edition = "2021"
+description = "CLI tool for OpenRouter AI models"
+license = "MIT"
+repository = "https://github.com/ergofobe/orai"
+homepage = "https://ergofobe.github.io/orai"
+readme = "README.md"
+keywords = ["ai", "openrouter", "cli", "llm", "chat"]
+categories = ["command-line-utilities"]
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+reqwest = { version = "0.12", features = ["stream", "json", "rustls-tls"], default-features = false }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+futures-util = "0.3"
+anyhow = "1"
+ratatui = "0.29"
+crossterm = "0.28"
+tui-textarea = "0.7"
+pulldown-cmark = "0.12"
+base64 = "0.22"
+mime_guess = "2"
+dirs = "6"
+lopdf = "0.34"
+regex = "1"

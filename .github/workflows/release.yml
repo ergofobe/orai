@@ -1,0 +1,153 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            use_cross: false
+            install_deps: sudo apt-get update && sudo apt-get install -y musl-tools
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            use_cross: false
+            install_deps: echo "No extra deps needed"
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+            use_cross: true
+            install_deps: echo "Using cross"
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            use_cross: true
+            install_deps: echo "Using cross"
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            use_cross: false
+            install_deps: echo "No extra deps needed"
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            use_cross: false
+            install_deps: echo "No extra deps needed"
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install dependencies
+        run: ${{ matrix.install_deps }}
+
+      - name: Install cross
+        if: matrix.use_cross
+        run: cargo install cross
+
+      - name: Build
+        run: |
+          if [ "${{ matrix.use_cross }}" = "true" ]; then
+            cross build --release --target ${{ matrix.target }}
+          else
+            cargo build --release --target ${{ matrix.target }}
+          fi
+
+      - name: Strip binary
+        run: |
+          if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+            strip target/${{ matrix.target }}/release/orai || true
+          else
+            strip target/${{ matrix.target }}/release/orai || true
+          fi
+
+      - name: Create archive
+        run: |
+          cd target/${{ matrix.target }}/release
+          tar czf orai-${{ matrix.target }}.tar.gz orai
+          mv orai-${{ matrix.target }}.tar.gz $GITHUB_WORKSPACE/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: orai-${{ matrix.target }}
+          path: orai-${{ matrix.target }}.tar.gz
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*.tar.gz
+          generate_release_notes: true
+
+      - name: Update Homebrew tap
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          
+          # Download all artifacts for SHA256
+          mkdir -p /tmp/hashes
+          cd artifacts
+          
+          for f in *.tar.gz; do
+            SHA=$(shasum -a 256 "$f" | cut -d' ' -f1)
+            echo "$f: $SHA"
+          done
+          
+          # Clone the homebrew tap
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git clone "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/ergofobe/homebrew-orai.git" /tmp/homebrew-orai
+          cd /tmp/homebrew-orai
+          
+          # Generate SHA256 hashes
+          X86_64_MACOS_SHA=$(shasum -a 256 "${GITHUB_WORKSPACE}/artifacts/orai-x86_64-apple-darwin.tar.gz" | cut -d' ' -f1 || echo "pending")
+          ARM64_MACOS_SHA=$(shasum -a 256 "${GITHUB_WORKSPACE}/artifacts/orai-aarch64-apple-darwin.tar.gz" | cut -d' ' -f1 || echo "pending")
+          X86_64_LINUX_MUSL_SHA=$(shasum -a 256 "${GITHUB_WORKSPACE}/artifacts/orai-x86_64-unknown-linux-musl.tar.gz" | cut -d' ' -f1 || echo "pending")
+          AARCH64_LINUX_MUSL_SHA=$(shasum -a 256 "${GITHUB_WORKSPACE}/artifacts/orai-aarch64-unknown-linux-musl.tar.gz" | cut -d' ' -f1 || echo "pending")
+          X86_64_LINUX_GNU_SHA=$(shasum -a 256 "${GITHUB_WORKSPACE}/artifacts/orai-x86_64-unknown-linux-gnu.tar.gz" | cut -d' ' -f1 || echo "pending")
+          AARCH64_LINUX_GNU_SHA=$(shasum -a 256 "${GITHUB_WORKSPACE}/artifacts/orai-aarch64-unknown-linux-gnu.tar.gz" | cut -d' ' -f1 || echo "pending")
+          
+          mkdir -p Formula
+          cat > Formula/orai.rb << 'FORMULA_EOF'
+          class Orai < Formula
+            desc "CLI tool for OpenRouter AI models"
+            homepage "https://ergofobe.github.io/orai"
+            url "https://github.com/ergofobe/orai/releases/download/#{TAG}/orai-x86_64-apple-darwin.tar.gz"
+            sha256 "#{X86_64_MACOS_SHA}"
+            version "#{VERSION}"
+            license "MIT"
+          
+            def install
+              bin.install "orai"
+            end
+          
+            test do
+              system "#{bin}/orai", "--version"
+            end
+          end
+          FORMULA_EOF
+          
+          git add .
+          git commit -m "Update orai to #{TAG}" || true
+          git push

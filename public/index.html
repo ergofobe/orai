@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>orai - OpenRouter AI from the command line</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #0a0a0a;
+            color: #e0e0e0;
+            line-height: 1.6;
+        }
+        .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+        header { padding: 80px 0 40px; text-align: center; }
+        h1 {
+            font-size: 4rem;
+            font-weight: 700;
+            letter-spacing: -2px;
+            background: linear-gradient(135deg, #4fc3f7, #81c784);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 8px;
+        }
+        .tagline { font-size: 1.25rem; color: #999; margin-bottom: 48px; }
+        .install-box {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 48px;
+            position: relative;
+        }
+        .install-box .label { font-size: 0.75rem; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+        .install-box code {
+            font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+            font-size: 0.95rem;
+            color: #4fc3f7;
+            display: block;
+            word-break: break-all;
+        }
+        .install-box .copy-btn {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: #333;
+            border: none;
+            color: #999;
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.75rem;
+            transition: all 0.2s;
+        }
+        .install-box .copy-btn:hover { background: #4fc3f7; color: #000; }
+        .brew-install { margin-top: 16px; }
+        .brew-install code { color: #81c784; }
+        .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-bottom: 48px; }
+        .feature {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 12px;
+            padding: 24px;
+            transition: border-color 0.2s;
+        }
+        .feature:hover { border-color: #4fc3f7; }
+        .feature .icon { font-size: 2rem; margin-bottom: 12px; }
+        .feature h3 { font-size: 1rem; margin-bottom: 8px; color: #e0e0e0; }
+        .feature p { font-size: 0.875rem; color: #999; }
+        .examples { margin-bottom: 48px; }
+        .examples h2 { font-size: 1.25rem; margin-bottom: 16px; color: #e0e0e0; }
+        .example {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 12px;
+            padding: 16px 20px;
+            margin-bottom: 12px;
+        }
+        .example .cmd { font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace; color: #4fc3f7; font-size: 0.9rem; }
+        .example .desc { font-size: 0.8rem; color: #666; margin-top: 4px; }
+        .tools-section { margin-bottom: 48px; }
+        .tools-section h2 { font-size: 1.25rem; margin-bottom: 16px; color: #e0e0e0; }
+        .tool-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+        .tool {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 12px;
+            padding: 16px;
+        }
+        .tool .name { font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace; color: #81c784; font-weight: 600; }
+        .tool .desc { font-size: 0.8rem; color: #999; margin-top: 4px; }
+        .danger { color: #ff8a65; font-size: 0.75rem; }
+        footer { text-align: center; padding: 48px 0; color: #666; font-size: 0.875rem; }
+        footer a { color: #4fc3f7; text-decoration: none; }
+        footer a:hover { text-decoration: underline; }
+        @media (max-width: 640px) {
+            .features { grid-template-columns: 1fr; }
+            .tool-grid { grid-template-columns: 1fr; }
+            h1 { font-size: 2.5rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>orai</h1>
+            <p class="tagline">OpenRouter AI from the command line</p>
+            <div class="install-box">
+                <div class="label">Install with one command</div>
+                <code id="install-cmd">curl -fsSL https://ergofobe.github.io/orai/install.sh | sh</code>
+                <button class="copy-btn" onclick="copyInstall()">Copy</button>
+            </div>
+            <div class="install-box brew-install">
+                <div class="label">Or with Homebrew (macOS)</div>
+                <code id="brew-cmd">brew install ergofobe/orai/orai</code>
+                <button class="copy-btn" onclick="copyBrew()">Copy</button>
+            </div>
+        </header>
+
+        <div class="features">
+            <div class="feature">
+                <div class="icon">&#x1F916;</div>
+                <h3>Any Model</h3>
+                <p>Use any model on OpenRouter. GPT-4o, Claude, Gemini, Llama, and 200+ more.</p>
+            </div>
+            <div class="feature">
+                <div class="icon">&#x1F527;</div>
+                <h3>Native Tools</h3>
+                <p>Read files, write files, run shell commands, and fetch URLs. AI-powered coding right in your terminal.</p>
+            </div>
+            <div class="feature">
+                <div class="icon">&#x1F4CE;</div>
+                <h3>Attachments</h3>
+                <p>Attach images, PDFs, and code files. PDFs auto-convert to images for vision models.</p>
+            </div>
+        </div>
+
+        <div class="examples">
+            <h2>Quick Start</h2>
+            <div class="example">
+                <div class="cmd">orai prompt "Explain Rust's borrow checker"</div>
+                <div class="desc">One-shot prompt with default model (openrouter/free)</div>
+            </div>
+            <div class="example">
+                <div class="cmd">orai -m anthropic/claude-3.5-sonnet prompt "Review this code"</div>
+                <div class="desc">Use a specific model</div>
+            </div>
+            <div class="example">
+                <div class="cmd">orai -a screenshot.png prompt "What does this show?"</div>
+                <div class="desc">Attach an image</div>
+            </div>
+            <div class="example">
+                <div class="cmd">orai chat</div>
+                <div class="desc">Interactive REPL conversation</div>
+            </div>
+            <div class="example">
+                <div class="cmd">orai tui</div>
+                <div class="desc">Full terminal UI with markdown rendering</div>
+            </div>
+        </div>
+
+        <div class="tools-section">
+            <h2>Tools</h2>
+            <div class="tool-grid">
+                <div class="tool">
+                    <span class="name">read(path)</span>
+                    <div class="desc">Read file contents from the local filesystem</div>
+                </div>
+                <div class="tool">
+                    <span class="name">write(path, content)</span>
+                    <div class="desc">Write content to a file <span class="danger">&#x26A0; requires confirmation</span></div>
+                </div>
+                <div class="tool">
+                    <span class="name">shell(command)</span>
+                    <div class="desc">Execute shell commands <span class="danger">&#x26A0; requires confirmation</span></div>
+                </div>
+                <div class="tool">
+                    <span class="name">web_fetch(url)</span>
+                    <div class="desc">Fetch content from a URL</div>
+                </div>
+                <div class="tool">
+                    <span class="name">openrouter:web_search</span>
+                    <div class="desc">Search the web for current information (server-side)</div>
+                </div>
+                <div class="tool">
+                    <span class="name">openrouter:datetime</span>
+                    <div class="desc">Get the current date and time (server-side)</div>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <a href="https://github.com/ergofobe/orai">GitHub</a> &middot;
+            <a href="https://openrouter.ai/docs">OpenRouter Docs</a> &middot;
+            MIT License
+        </footer>
+    </div>
+
+    <script>
+        function copyInstall() {
+            navigator.clipboard.writeText(document.getElementById('install-cmd').textContent);
+            const btn = document.querySelector('.install-box .copy-btn');
+            btn.textContent = 'Copied!';
+            setTimeout(() => btn.textContent = 'Copy', 2000);
+        }
+        function copyBrew() {
+            navigator.clipboard.writeText(document.getElementById('brew-cmd').textContent);
+            const btn = document.querySelector('.brew-install .copy-btn');
+            btn.textContent = 'Copied!';
+            setTimeout(() => btn.textContent = 'Copy', 2000);
+        }
+    </script>
+</body>
+</html>
