@@ -71,7 +71,7 @@ pub async fn run_tui(cli: &crate::cli::Cli) -> Result<()> {
         approve_all: cli.yes,
     };
 
-    let client = OpenRouterClient::new(cli)?;
+    let client = OpenRouterClient::new(cli).await?;
 
     let mut initial_attachments = Vec::new();
     for path in &cli.attach {

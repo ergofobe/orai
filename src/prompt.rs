@@ -22,7 +22,7 @@ pub async fn run_prompt(cli: &crate::cli::Cli, prompt_args: &crate::cli::Command
         attachments.push(att);
     }
 
-    let client = OpenRouterClient::new(cli)?;
+    let client = OpenRouterClient::new(cli).await?;
     let mut messages = vec![Message {
         role: "user".to_string(),
         content: Some(serde_json::Value::String(prompt_text.clone())),

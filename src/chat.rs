@@ -5,7 +5,7 @@ use crate::client::{Message, OpenRouterClient};
 use crate::attachment::{load_attachment, parse_attachments_from_text};
 
 pub async fn run_chat(cli: &crate::cli::Cli) -> Result<()> {
-    let client = OpenRouterClient::new(cli)?;
+    let client = OpenRouterClient::new(cli).await?;
     let mut messages: Vec<Message> = Vec::new();
     let mut initial_attachments = Vec::new();
 

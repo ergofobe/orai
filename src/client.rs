@@ -41,7 +41,7 @@ pub struct OpenRouterClient {
 }
 
 impl OpenRouterClient {
-    pub fn new(cli: &Cli) -> Result<Self> {
+    pub async fn new(cli: &Cli) -> Result<Self> {
         let api_key = std::env::var("OPENROUTER_API_KEY")
             .context("OPENROUTER_API_KEY environment variable is required")?;
 
@@ -49,13 +49,19 @@ impl OpenRouterClient {
         let include_web_search = !cli.no_web_search;
         let include_datetime = !cli.no_datetime;
 
+        let model_supports_tools = check_model_supports_tools(&cli.model).await.unwrap_or(true);
+
         let tools = crate::tools::build_tools_array(
-            include_native,
-            include_web_search,
-            include_datetime,
+            include_native && model_supports_tools,
+            include_web_search && model_supports_tools,
+            include_datetime && model_supports_tools,
             &cli.search_engine,
             cli.max_search_results,
         );
+
+        if !model_supports_tools && (include_native || include_web_search || include_datetime) {
+            eprintln!("Note: Model '{}' does not support tools. Tools disabled for this session.", cli.model);
+        }
 
         let tool_config = ToolConfig {
             auto_approve: cli.yes,
@@ -230,7 +236,8 @@ impl OpenRouterClient {
             "stream": stream,
         });
 
-        if !self.tools.is_empty() {
+        let has_tools = !self.tools.is_empty();
+        if has_tools {
             body["tools"] = serde_json::Value::Array(self.tools.clone());
         }
 
@@ -246,13 +253,48 @@ impl OpenRouterClient {
             .await
             .context("Failed to send request to OpenRouter")?;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            bail!("OpenRouter API error: {} - {}", status, body);
+        let status = response.status();
+        let body_text = response.text().await.unwrap_or_default();
+
+        if !status.is_success() {
+            if has_tools && (status.as_u16() == 400 || status.as_u16() == 422) {
+                eprintln!("Warning: Model may not support tools, retrying without tools...");
+                if let Some(obj) = body.as_object_mut() {
+                    obj.remove("tools");
+                }
+                let retry_response = self
+                    .client
+                    .post(API_URL)
+                    .header("Authorization", format!("Bearer {}", self.api_key))
+                    .header("Content-Type", "application/json")
+                    .header("HTTP-Referer", "https://github.com/ergofobe/orai")
+                    .header("X-Title", "orai")
+                    .json(&body)
+                    .send()
+                    .await
+                    .context("Failed to send request to OpenRouter")?;
+
+                let retry_status = retry_response.status();
+                let retry_body = retry_response.text().await.unwrap_or_default();
+
+                if !retry_status.is_success() {
+                    bail!("OpenRouter API error: {} - {}", retry_status, retry_body);
+                }
+
+                let response_json: serde_json::Value = serde_json::from_str(&retry_body)
+                    .context(format!("Failed to parse API response: {}", &retry_body[..retry_body.len().min(500)]))?;
+                return self.parse_response(response_json);
+            }
+
+            bail!("OpenRouter API error: {} - {}", status, body_text);
         }
 
-        let response_json: serde_json::Value = response.json().await?;
+        let response_json: serde_json::Value = serde_json::from_str(&body_text)
+            .context(format!("Failed to parse API response ({} bytes): {}", body_text.len(), &body_text[..body_text.len().min(500)]))?;
+        self.parse_response(response_json)
+    }
+
+    fn parse_response(&self, response_json: serde_json::Value) -> Result<Message> {
         let choice = response_json
             .get("choices")
             .and_then(|c| c.get(0))
@@ -383,5 +425,42 @@ fn truncate_display(s: &str, max_len: usize) -> String {
         format!("{}...", &single_line[..max_len])
     } else {
         single_line
+    }
+}
+
+async fn check_model_supports_tools(model_id: &str) -> Result<bool> {
+    let client = Client::new();
+    let response = client
+        .get("https://openrouter.ai/api/v1/models")
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
+        .await;
+
+    match response {
+        Ok(resp) => {
+            if !resp.status().is_success() {
+                return Ok(true);
+            }
+            let body: serde_json::Value = match resp.json().await {
+                Ok(b) => b,
+                Err(_) => return Ok(true),
+            };
+            let models = match body.get("data").and_then(|d| d.as_array()) {
+                Some(m) => m,
+                None => return Ok(true),
+            };
+            for m in models {
+                if m.get("id").and_then(|v| v.as_str()) == Some(model_id) {
+                    if let Some(params) = m.get("supported_parameters").and_then(|p| p.as_array()) {
+                        let supports_tools = params.iter().any(|p| p.as_str() == Some("tools"));
+                        return Ok(supports_tools);
+                    }
+                    return Ok(true);
+                }
+            }
+            eprintln!("Warning: Model '{}' not found in model list. Assuming tools are supported.", model_id);
+            Ok(true)
+        }
+        Err(_) => Ok(true),
     }
 }
