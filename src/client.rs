@@ -1,13 +1,13 @@
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use futures_util::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::pin::Pin;
 
-use crate::cli::Cli;
-use crate::stream::{AccumulatedToolCalls, ToolCall, parse_sse_line};
-use crate::tools::{ToolCallInfo, ToolConfig, ToolResult, execute_native_tool};
 use crate::attachment::Attachment;
+use crate::cli::Cli;
+use crate::stream::{parse_sse_line, AccumulatedToolCalls, ToolCall};
+use crate::tools::{execute_native_tool, ToolCallInfo, ToolConfig, ToolResult};
 
 const API_URL: &str = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -60,7 +60,10 @@ impl OpenRouterClient {
         );
 
         if !model_supports_tools && (include_native || include_web_search || include_datetime) {
-            eprintln!("Note: Model '{}' does not support tools. Tools disabled for this session.", cli.model);
+            eprintln!(
+                "Note: Model '{}' does not support tools. Tools disabled for this session.",
+                cli.model
+            );
         }
 
         let tool_config = ToolConfig {
@@ -110,7 +113,8 @@ impl OpenRouterClient {
 
                     eprintln!("⚙ {}({})", info.name, truncate_display(&info.arguments, 80));
 
-                    let result = execute_native_tool(&info.name, &info.arguments, &self.tool_config).await;
+                    let result =
+                        execute_native_tool(&info.name, &info.arguments, &self.tool_config).await;
 
                     match &result {
                         ToolResult::Success(msg) => {
@@ -132,7 +136,11 @@ impl OpenRouterClient {
                 continue;
             }
 
-            return Ok(assistant_content.to_string());
+            let content_str = match &assistant_content {
+                serde_json::Value::String(s) => s.clone(),
+                other => other.to_string(),
+            };
+            return Ok(content_str);
         }
     }
 
@@ -141,7 +149,14 @@ impl OpenRouterClient {
         &'a self,
         messages: &'a mut Vec<Message>,
         attachments: &'a [Attachment],
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Pin<Box<dyn futures_util::Stream<Item = StreamEvent> + Send>>>> + Send + 'a>> {
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<Pin<Box<dyn futures_util::Stream<Item = StreamEvent> + Send>>>,
+                > + Send
+                + 'a,
+        >,
+    > {
         Box::pin(async move {
             let mut response = self.send_request(messages, attachments, true).await?;
 
@@ -158,7 +173,8 @@ impl OpenRouterClient {
 
                     eprintln!("⚙ {}({})", info.name, truncate_display(&info.arguments, 80));
 
-                    let result = execute_native_tool(&info.name, &info.arguments, &self.tool_config).await;
+                    let result =
+                        execute_native_tool(&info.name, &info.arguments, &self.tool_config).await;
 
                     match &result {
                         ToolResult::Success(msg) => {
@@ -177,7 +193,9 @@ impl OpenRouterClient {
                     });
                 }
 
-                return self.send_streaming_with_agentic_loop(messages, attachments).await;
+                return self
+                    .send_streaming_with_agentic_loop(messages, attachments)
+                    .await;
             }
 
             let stream = self.stream_response().await?;
@@ -284,8 +302,11 @@ impl OpenRouterClient {
                 if retry_body.contains("data:") {
                     return self.parse_sse_response(&retry_body);
                 }
-                let response_json: serde_json::Value = serde_json::from_str(extract_json(&retry_body))
-                    .context(format!("Failed to parse API response: {}", &retry_body[..retry_body.len().min(500)]))?;
+                let response_json: serde_json::Value =
+                    serde_json::from_str(extract_json(&retry_body)).context(format!(
+                        "Failed to parse API response: {}",
+                        &retry_body[..retry_body.len().min(500)]
+                    ))?;
                 return self.parse_response(response_json);
             }
 
@@ -297,7 +318,11 @@ impl OpenRouterClient {
         }
 
         let response_json: serde_json::Value = serde_json::from_str(extract_json(&body_text))
-            .context(format!("Failed to parse API response ({} bytes): {}", body_text.len(), &body_text[..body_text.len().min(500)]))?;
+            .context(format!(
+                "Failed to parse API response ({} bytes): {}",
+                body_text.len(),
+                &body_text[..body_text.len().min(500)]
+            ))?;
         self.parse_response(response_json)
     }
 
@@ -324,7 +349,9 @@ impl OpenRouterClient {
                                     tool_calls_acc.apply_delta(deltas);
                                 }
                             }
-                            if let Some(_reason) = choice.get("finish_reason").and_then(|v| v.as_str()) {
+                            if let Some(_reason) =
+                                choice.get("finish_reason").and_then(|v| v.as_str())
+                            {
                             }
                         }
                     }
@@ -356,10 +383,16 @@ impl OpenRouterClient {
             .and_then(|c| c.get(0))
             .ok_or_else(|| anyhow::anyhow!("No choices in response"))?;
 
-        let message = choice.get("message").ok_or_else(|| anyhow::anyhow!("No message in response"))?;
+        let message = choice
+            .get("message")
+            .ok_or_else(|| anyhow::anyhow!("No message in response"))?;
 
         let mut msg = Message {
-            role: message.get("role").and_then(|r| r.as_str()).unwrap_or("assistant").to_string(),
+            role: message
+                .get("role")
+                .and_then(|r| r.as_str())
+                .unwrap_or("assistant")
+                .to_string(),
             content: message.get("content").cloned(),
             tool_calls: None,
             tool_call_id: None,
@@ -374,7 +407,9 @@ impl OpenRouterClient {
     }
 
     #[allow(dead_code)]
-    async fn stream_response(&self) -> Result<Pin<Box<dyn futures_util::Stream<Item = StreamEvent> + Send>>> {
+    async fn stream_response(
+        &self,
+    ) -> Result<Pin<Box<dyn futures_util::Stream<Item = StreamEvent> + Send>>> {
         let mut body = serde_json::json!({
             "model": self.model,
             "messages": [],
@@ -431,8 +466,13 @@ impl OpenRouterClient {
                                         acc.apply_delta(deltas);
                                     }
                                 }
-                                if let Some(reason) = choice.get("finish_reason").and_then(|v| v.as_str()) {
-                                    if reason == "stop" || reason == "end_turn" || reason == "tool_calls" {
+                                if let Some(reason) =
+                                    choice.get("finish_reason").and_then(|v| v.as_str())
+                                {
+                                    if reason == "stop"
+                                        || reason == "end_turn"
+                                        || reason == "tool_calls"
+                                    {
                                         done = true;
                                     }
                                 }
@@ -524,7 +564,10 @@ async fn check_model_supports_tools(model_id: &str) -> Result<bool> {
                     return Ok(true);
                 }
             }
-            eprintln!("Warning: Model '{}' not found in model list. Assuming tools are supported.", model_id);
+            eprintln!(
+                "Warning: Model '{}' not found in model list. Assuming tools are supported.",
+                model_id
+            );
             Ok(true)
         }
         Err(_) => Ok(true),

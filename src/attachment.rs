@@ -305,7 +305,7 @@ fn load_as_image_fallback(path: &Path) -> Result<Vec<ContentPart>> {
 }
 
 pub fn parse_attachments_from_text(text: &str) -> (String, Vec<String>) {
-    let re = regex::Regex::new(r"\+(\S+)").unwrap();
+    let re = regex::Regex::new(r"\+([\w./-]+\.\w{1,10})").unwrap();
     let mut clean_text = text.to_string();
     let mut attachments = Vec::new();
 

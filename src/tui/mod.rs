@@ -1,5 +1,5 @@
-pub mod render;
 pub mod input;
+pub mod render;
 
 use anyhow::Result;
 use crossterm::{
@@ -8,8 +8,8 @@ use crossterm::{
 };
 use ratatui::{backend::CrosstermBackend, Terminal};
 
-use crate::client::{Message, OpenRouterClient};
 use crate::attachment::{load_attachment, parse_attachments_from_text};
+use crate::client::{Message, OpenRouterClient};
 
 #[allow(dead_code)]
 const MAX_TOOL_ITERATIONS: u32 = 25;
@@ -84,13 +84,42 @@ pub async fn run_tui(cli: &crate::cli::Cli) -> Result<()> {
 
     let mut api_messages: Vec<Message> = Vec::new();
 
+    let (response_tx, mut response_rx): (tokio::sync::mpsc::UnboundedSender<Message>, _) =
+        tokio::sync::mpsc::unbounded_channel();
+
     loop {
         terminal.draw(|f| render::render(f, &app, &textarea))?;
+
+        if let Ok(response_msg) = response_rx.try_recv() {
+            let content = match &response_msg.content {
+                Some(serde_json::Value::String(s)) => s.clone(),
+                Some(other) => other.to_string(),
+                None => String::new(),
+            };
+            if !content.is_empty() {
+                app.messages.push(ChatMessage {
+                    role: Role::Assistant,
+                    content,
+                });
+                api_messages.push(response_msg);
+            }
+            app.is_streaming = false;
+        }
 
         if event::poll(std::time::Duration::from_millis(50))? {
             match event::read()? {
                 Event::Key(key) => {
-                    if handle_key_event(key, &mut app, &mut textarea, &client, &mut api_messages, &initial_attachments).await {
+                    if handle_key_event(
+                        key,
+                        &mut app,
+                        &mut textarea,
+                        &client,
+                        &mut api_messages,
+                        &initial_attachments,
+                        &response_tx,
+                    )
+                    .await
+                    {
                         break;
                     }
                 }
@@ -117,6 +146,7 @@ async fn handle_key_event(
     client: &OpenRouterClient,
     api_messages: &mut Vec<Message>,
     attachments: &[crate::attachment::Attachment],
+    response_tx: &tokio::sync::mpsc::UnboundedSender<Message>,
 ) -> bool {
     if app.is_streaming {
         return false;
@@ -197,7 +227,31 @@ async fn handle_key_event(
             app.current_response.clear();
             app.auto_scroll = true;
 
-            tokio::spawn(run_request(client.clone(), api_messages.clone(), all_attachments, app.approve_all));
+            let tx = response_tx.clone();
+            let client_clone = client.clone();
+            let msgs_clone = api_messages.clone();
+            let att_clone = all_attachments.clone();
+            tokio::spawn(async move {
+                let mut msgs = msgs_clone;
+                let result = client_clone
+                    .send_with_agentic_loop(&mut msgs, &att_clone)
+                    .await;
+                let msg = match result {
+                    Ok(response) => Message {
+                        role: "assistant".to_string(),
+                        content: Some(serde_json::Value::String(response)),
+                        tool_calls: None,
+                        tool_call_id: None,
+                    },
+                    Err(e) => Message {
+                        role: "assistant".to_string(),
+                        content: Some(serde_json::Value::String(format!("Error: {}", e))),
+                        tool_calls: None,
+                        tool_call_id: None,
+                    },
+                };
+                let _ = tx.send(msg);
+            });
         }
         KeyCode::Enter if key.modifiers.contains(KeyModifiers::SHIFT) => {
             textarea.insert_newline();
@@ -205,7 +259,9 @@ async fn handle_key_event(
         KeyCode::Char('j') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             textarea.insert_newline();
         }
-        KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::CONTROL) && app.popup.is_none() => {
+        KeyCode::Char('a')
+            if key.modifiers.contains(KeyModifiers::CONTROL) && app.popup.is_none() =>
+        {
             app.popup = Some(Popup::FilePicker {
                 input: String::new(),
                 completions: Vec::new(),
@@ -226,95 +282,75 @@ async fn handle_key_event(
 
 fn handle_popup_event(key: KeyEvent, app: &mut App) {
     match &mut app.popup {
-        Some(Popup::FilePicker { input, completions, selected }) => {
-            match key.code {
-                KeyCode::Esc => {
-                    app.popup = None;
-                }
-                KeyCode::Enter => {
-                    if !completions.is_empty() && *selected < completions.len() {
-                        let path = completions[*selected].to_string_lossy().to_string();
-                        input.insert_str(input.len(), &path);
-                    }
-                    let _filename = input.clone();
-                    app.popup = None;
-                }
-                KeyCode::Tab => {
-                    if !input.is_empty() {
-                        let path = std::path::Path::new(&*input);
-                        if let Ok(entries) = std::fs::read_dir(path.parent().unwrap_or(std::path::Path::new("."))) {
-                            *completions = entries
-                                .filter_map(|e| e.ok())
-                                .map(|e| e.path())
-                                .filter(|p| {
-                                    p.to_string_lossy().starts_with(&*input)
-                                        || p.file_name().is_some_and(|f| f.to_string_lossy().starts_with(&*input))
-                                })
-                                .collect();
-                            *selected = 0;
-                        }
-                    }
-                }
-                KeyCode::Up => {
-                    if *selected > 0 {
-                        *selected -= 1;
-                    }
-                }
-                KeyCode::Down => {
-                    if *selected + 1 < completions.len() {
-                        *selected += 1;
-                    }
-                }
-                KeyCode::Char(c) => {
-                    input.push(c);
-                }
-                KeyCode::Backspace => {
-                    input.pop();
-                }
-                _ => {}
+        Some(Popup::FilePicker {
+            input,
+            completions,
+            selected,
+        }) => match key.code {
+            KeyCode::Esc => {
+                app.popup = None;
             }
-        }
-        Some(Popup::ToolConfirm { tool_name: _, arguments: _ }) => {
-            match key.code {
-                KeyCode::Char('y') | KeyCode::Char('Y') => {
-                    app.popup = None;
+            KeyCode::Enter => {
+                if !completions.is_empty() && *selected < completions.len() {
+                    let path = completions[*selected].to_string_lossy().to_string();
+                    input.insert_str(input.len(), &path);
                 }
-                KeyCode::Char('n') | KeyCode::Char('N') => {
-                    app.popup = None;
-                }
-                KeyCode::Char('a') | KeyCode::Char('A') => {
-                    app.approve_all = true;
-                    app.popup = None;
-                }
-                _ => {}
+                let _filename = input.clone();
+                app.popup = None;
             }
-        }
+            KeyCode::Tab => {
+                if !input.is_empty() {
+                    let path = std::path::Path::new(&*input);
+                    if let Ok(entries) =
+                        std::fs::read_dir(path.parent().unwrap_or(std::path::Path::new(".")))
+                    {
+                        *completions = entries
+                            .filter_map(|e| e.ok())
+                            .map(|e| e.path())
+                            .filter(|p| {
+                                p.to_string_lossy().starts_with(&*input)
+                                    || p.file_name()
+                                        .is_some_and(|f| f.to_string_lossy().starts_with(&*input))
+                            })
+                            .collect();
+                        *selected = 0;
+                    }
+                }
+            }
+            KeyCode::Up => {
+                if *selected > 0 {
+                    *selected -= 1;
+                }
+            }
+            KeyCode::Down => {
+                if *selected + 1 < completions.len() {
+                    *selected += 1;
+                }
+            }
+            KeyCode::Char(c) => {
+                input.push(c);
+            }
+            KeyCode::Backspace => {
+                input.pop();
+            }
+            _ => {}
+        },
+        Some(Popup::ToolConfirm {
+            tool_name: _,
+            arguments: _,
+        }) => match key.code {
+            KeyCode::Char('y') | KeyCode::Char('Y') => {
+                app.popup = None;
+            }
+            KeyCode::Char('n') | KeyCode::Char('N') => {
+                app.popup = None;
+            }
+            KeyCode::Char('a') | KeyCode::Char('A') => {
+                app.approve_all = true;
+                app.popup = None;
+            }
+            _ => {}
+        },
         None => {}
-    }
-}
-
-async fn run_request(
-    client: OpenRouterClient,
-    messages: Vec<Message>,
-    attachments: Vec<crate::attachment::Attachment>,
-    _auto_approve: bool,
-) -> Message {
-    // This is a simplified version - full streaming TUI would need channel-based communication
-    // For now, use the non-streaming agentic loop
-    let mut msgs = messages;
-    let result = client.send_with_agentic_loop(&mut msgs, &attachments).await;
-    match result {
-        Ok(response) => Message {
-            role: "assistant".to_string(),
-            content: Some(serde_json::Value::String(response)),
-            tool_calls: None,
-            tool_call_id: None,
-        },
-        Err(e) => Message {
-            role: "assistant".to_string(),
-            content: Some(serde_json::Value::String(format!("Error: {}", e))),
-            tool_calls: None,
-            tool_call_id: None,
-        },
     }
 }

@@ -1,8 +1,8 @@
 use anyhow::Result;
 use tokio::io::AsyncBufReadExt;
 
-use crate::client::{Message, OpenRouterClient};
 use crate::attachment::{load_attachment, parse_attachments_from_text};
+use crate::client::{Message, OpenRouterClient};
 
 pub async fn run_chat(cli: &crate::cli::Cli) -> Result<()> {
     let client = OpenRouterClient::new(cli).await?;
@@ -24,12 +24,7 @@ pub async fn run_chat(cli: &crate::cli::Cli) -> Result<()> {
 
     loop {
         eprint!("You: ");
-        let _input = String::new();
         std::io::Write::flush(&mut std::io::stderr())?;
-
-        if lines.next_line().await?.is_none() {
-            break;
-        }
 
         let line: String = match lines.next_line().await {
             Ok(Some(l)) => l,
@@ -78,7 +73,10 @@ pub async fn run_chat(cli: &crate::cli::Cli) -> Result<()> {
 
         eprint!("Assistant: ");
 
-        match client.send_with_agentic_loop(&mut messages, &attachments).await {
+        match client
+            .send_with_agentic_loop(&mut messages, &attachments)
+            .await
+        {
             Ok(response) => {
                 println!("{}", response);
                 println!();

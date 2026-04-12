@@ -35,20 +35,18 @@ pub async fn tool_read(args: &HashMap<String, Value>) -> ToolResult {
     }
 
     match std::fs::read(p) {
-        Ok(bytes) => {
-            match String::from_utf8(bytes.clone()) {
-                Ok(text) => ToolResult::Success(text),
-                Err(_) => {
-                    use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
-                    let b64 = BASE64.encode(&bytes);
-                    ToolResult::Success(format!(
-                        "[Binary file: {} bytes, base64 encoded]\n{}",
-                        bytes.len(),
-                        b64
-                    ))
-                }
+        Ok(bytes) => match String::from_utf8(bytes.clone()) {
+            Ok(text) => ToolResult::Success(text),
+            Err(_) => {
+                use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+                let b64 = BASE64.encode(&bytes);
+                ToolResult::Success(format!(
+                    "[Binary file: {} bytes, base64 encoded]\n{}",
+                    bytes.len(),
+                    b64
+                ))
             }
-        }
+        },
         Err(e) => ToolResult::Error(format!("Cannot read file: {}", e)),
     }
 }
@@ -105,10 +103,18 @@ pub async fn tool_shell(args: &HashMap<String, Value>, _timeout_secs: u64) -> To
             let mut stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
             if stdout.len() > MAX_SHELL_OUTPUT {
-                stdout = format!("{}...\n(truncated, {} bytes total)", &stdout[..MAX_SHELL_OUTPUT], stdout.len());
+                stdout = format!(
+                    "{}...\n(truncated, {} bytes total)",
+                    &stdout[..MAX_SHELL_OUTPUT],
+                    stdout.len()
+                );
             }
             if stderr.len() > MAX_SHELL_OUTPUT {
-                stderr = format!("{}...\n(truncated, {} bytes total)", &stderr[..MAX_SHELL_OUTPUT], stderr.len());
+                stderr = format!(
+                    "{}...\n(truncated, {} bytes total)",
+                    &stderr[..MAX_SHELL_OUTPUT],
+                    stderr.len()
+                );
             }
 
             let mut result = String::new();
@@ -149,7 +155,11 @@ pub async fn tool_web_fetch(args: &HashMap<String, Value>) -> ToolResult {
         Ok(response) => {
             let status = response.status();
             if !status.is_success() {
-                return ToolResult::Error(format!("HTTP error: {} {}", status.as_u16(), status.canonical_reason().unwrap_or("")));
+                return ToolResult::Error(format!(
+                    "HTTP error: {} {}",
+                    status.as_u16(),
+                    status.canonical_reason().unwrap_or("")
+                ));
             }
 
             match response.text().await {

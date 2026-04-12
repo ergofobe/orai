@@ -1,1 +1,4 @@
 /target
+
+# Personal agent memory (not shared)
+.agents/memory.local/

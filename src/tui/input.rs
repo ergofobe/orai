@@ -1,9 +1,13 @@
 use crossterm::event::{KeyCode, KeyEvent};
+use ratatui::style::{Color, Style};
 use tui_textarea::TextArea;
 
 pub fn create_textarea() -> TextArea<'static> {
     let mut textarea = TextArea::default();
     textarea.set_block(ratatui::widgets::Block::default().borders(ratatui::widgets::Borders::NONE));
+    textarea.set_style(Style::default().fg(Color::White));
+    textarea.set_cursor_line_style(Style::default());
+    textarea.set_cursor_style(Style::default().fg(Color::White));
     textarea
 }
 

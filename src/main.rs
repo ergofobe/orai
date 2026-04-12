@@ -1,11 +1,11 @@
+mod attachment;
+mod chat;
 mod cli;
 mod client;
-mod stream;
-mod attachment;
-mod tools;
 mod markdown;
 mod prompt;
-mod chat;
+mod stream;
+mod tools;
 mod tui;
 
 use anyhow::Result;

@@ -147,10 +147,16 @@ pub fn build_tools_array(
         if search_engine != "auto" || max_search_results != 5 {
             let mut params = serde_json::Map::new();
             if search_engine != "auto" {
-                params.insert("engine".to_string(), Value::String(search_engine.to_string()));
+                params.insert(
+                    "engine".to_string(),
+                    Value::String(search_engine.to_string()),
+                );
             }
             if max_search_results != 5 {
-                params.insert("max_results".to_string(), Value::Number(max_search_results.into()));
+                params.insert(
+                    "max_results".to_string(),
+                    Value::Number(max_search_results.into()),
+                );
             }
             web_search["parameters"] = Value::Object(params);
         }
@@ -167,11 +173,7 @@ pub fn build_tools_array(
     tools
 }
 
-pub async fn execute_native_tool(
-    name: &str,
-    arguments: &str,
-    config: &ToolConfig,
-) -> ToolResult {
+pub async fn execute_native_tool(name: &str, arguments: &str, config: &ToolConfig) -> ToolResult {
     let args: HashMap<String, Value> = match serde_json::from_str(arguments) {
         Ok(a) => a,
         Err(e) => return ToolResult::Error(format!("Invalid JSON arguments: {}", e)),

@@ -1,8 +1,8 @@
 use anyhow::Result;
 use tokio::io::AsyncWriteExt;
 
-use crate::client::{Message, OpenRouterClient};
 use crate::attachment::load_attachment;
+use crate::client::{Message, OpenRouterClient};
 
 pub async fn run_prompt(cli: &crate::cli::Cli, prompt_args: &crate::cli::Commands) -> Result<()> {
     let prompt_text = match prompt_args {
@@ -31,7 +31,9 @@ pub async fn run_prompt(cli: &crate::cli::Cli, prompt_args: &crate::cli::Command
     }];
 
     if no_stream {
-        let response = client.send_with_agentic_loop(&mut messages, &attachments).await?;
+        let response = client
+            .send_with_agentic_loop(&mut messages, &attachments)
+            .await?;
         println!("{}", response);
     } else {
         run_streaming_prompt(&client, &mut messages, &attachments).await?;
@@ -62,9 +64,18 @@ fn run_streaming_prompt<'a>(
                     arguments: tool_call.function.arguments.clone(),
                 };
 
-                eprintln!("\n⚙ {}({})", info.name, truncate_for_display(&info.arguments, 80));
+                eprintln!(
+                    "\n⚙ {}({})",
+                    info.name,
+                    truncate_for_display(&info.arguments, 80)
+                );
 
-                let result = crate::tools::execute_native_tool(&info.name, &info.arguments, client.tool_config()).await;
+                let result = crate::tools::execute_native_tool(
+                    &info.name,
+                    &info.arguments,
+                    client.tool_config(),
+                )
+                .await;
 
                 match &result {
                     crate::tools::ToolResult::Success(msg) => {
@@ -87,7 +98,10 @@ fn run_streaming_prompt<'a>(
         }
 
         let content = response.content.clone().unwrap_or_default();
-        let content_str = content.to_string();
+        let content_str = match &content {
+            serde_json::Value::String(s) => s.clone(),
+            other => other.to_string(),
+        };
         if !content_str.is_empty() {
             print!("{}", content_str);
             stdout.flush().await?;
