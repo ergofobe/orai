@@ -1,6 +1,7 @@
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::Path;
+use std::time::Duration;
 use tokio::process::Command;
 
 const MAX_READ_SIZE: usize = 10 * 1024 * 1024;
@@ -82,22 +83,26 @@ pub async fn tool_write(args: &HashMap<String, Value>) -> ToolResult {
     }
 }
 
-pub async fn tool_shell(args: &HashMap<String, Value>, _timeout_secs: u64) -> ToolResult {
+pub async fn tool_shell(args: &HashMap<String, Value>, timeout_secs: u64) -> ToolResult {
     let command = match args.get("command").and_then(|v| v.as_str()) {
         Some(c) => c,
         None => return ToolResult::Error("Missing 'command' argument".to_string()),
     };
 
-    let output = Command::new("sh")
-        .arg("-c")
-        .arg(command)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .output()
-        .await;
+    let timeout = Duration::from_secs(if timeout_secs > 0 { timeout_secs } else { 120 });
+    let result = tokio::time::timeout(timeout, async {
+        Command::new("sh")
+            .arg("-c")
+            .arg(command)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .output()
+            .await
+    })
+    .await;
 
-    match output {
-        Ok(output) => {
+    match result {
+        Ok(Ok(output)) => {
             let exit_code = output.status.code().unwrap_or(-1);
             let mut stdout = String::from_utf8_lossy(&output.stdout).to_string();
             let mut stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -132,7 +137,11 @@ pub async fn tool_shell(args: &HashMap<String, Value>, _timeout_secs: u64) -> To
 
             ToolResult::Success(result)
         }
-        Err(e) => ToolResult::Error(format!("Failed to execute command: {}", e)),
+        Ok(Err(e)) => ToolResult::Error(format!("Failed to execute command: {}", e)),
+        Err(_) => ToolResult::Error(format!(
+            "Shell command timed out after {} seconds",
+            timeout.as_secs()
+        )),
     }
 }
 
