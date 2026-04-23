@@ -139,6 +139,7 @@ fn load_image(path: &Path) -> Result<Vec<ContentPart>> {
 fn load_text(path: &Path) -> Result<Vec<ContentPart>> {
     let bytes = std::fs::read(path).context("Failed to read text file")?;
     let content = String::from_utf8_lossy(&bytes).into_owned();
+    let content = content.replace("\r\n", "\n").replace('\r', "\n");
     let header = format!("--- Attachment: {} ---", path.display());
     let footer = "--- End Attachment ---";
     Ok(vec![ContentPart::Text {
