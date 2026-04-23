@@ -137,7 +137,8 @@ fn load_image(path: &Path) -> Result<Vec<ContentPart>> {
 }
 
 fn load_text(path: &Path) -> Result<Vec<ContentPart>> {
-    let content = std::fs::read_to_string(path).context("Failed to read text file")?;
+    let bytes = std::fs::read(path).context("Failed to read text file")?;
+    let content = String::from_utf8_lossy(&bytes).into_owned();
     let header = format!("--- Attachment: {} ---", path.display());
     let footer = "--- End Attachment ---";
     Ok(vec![ContentPart::Text {
@@ -267,10 +268,9 @@ fn extract_pdf_text(path: &Path) -> Result<Vec<ContentPart>> {
     for (page_num, page_id) in &pages {
         match doc.get_page_content(*page_id) {
             Ok(content_bytes) => {
-                if let Ok(content_str) = String::from_utf8(content_bytes) {
-                    let page_text = extract_text_from_content(&content_str);
-                    all_text.push_str(&format!("--- Page {} ---\n{}\n\n", page_num, page_text));
-                }
+                let content_str = String::from_utf8_lossy(&content_bytes);
+                let page_text = extract_text_from_content(&content_str);
+                all_text.push_str(&format!("--- Page {} ---\n{}\n\n", page_num, page_text));
             }
             Err(_) => continue,
         }
