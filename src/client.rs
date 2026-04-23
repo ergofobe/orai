@@ -3,6 +3,7 @@ use futures_util::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::pin::Pin;
+use std::time::Duration;
 
 use crate::attachment::Attachment;
 use crate::cli::Cli;
@@ -76,8 +77,15 @@ impl OpenRouterClient {
             },
         };
 
+        let client = Client::builder()
+            .timeout(Duration::from_secs(300))
+            .connect_timeout(Duration::from_secs(30))
+            .pool_idle_timeout(Duration::from_secs(60))
+            .build()
+            .context("Failed to create HTTP client")?;
+
         Ok(Self {
-            client: Client::new(),
+            client,
             api_key,
             model: cli.model.clone(),
             tools,
