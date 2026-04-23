@@ -312,7 +312,9 @@ impl OpenRouterClient {
                 }
                 let response_json: serde_json::Value =
                     serde_json::from_str(extract_json(&retry_body)).context(format!(
-                        "Failed to parse API response: {}",
+                        "Failed to parse API response (status={}, {} bytes): {}",
+                        retry_status,
+                        retry_body.len(),
                         &retry_body[..retry_body.len().min(500)]
                     ))?;
                 return self.parse_response(response_json);
@@ -327,7 +329,8 @@ impl OpenRouterClient {
 
         let response_json: serde_json::Value = serde_json::from_str(extract_json(&body_text))
             .context(format!(
-                "Failed to parse API response ({} bytes): {}",
+                "Failed to parse API response (status={}, {} bytes): {}",
+                status,
                 body_text.len(),
                 &body_text[..body_text.len().min(500)]
             ))?;
@@ -533,13 +536,12 @@ fn truncate_display(s: &str, max_len: usize) -> String {
 }
 
 fn extract_json(body: &str) -> &str {
-    if let Some(pos) = body.find('{') {
-        &body[pos..]
-    } else if let Some(pos) = body.find('[') {
-        &body[pos..]
-    } else {
-        body.trim()
+    for (i, ch) in body.char_indices() {
+        if (ch == '{' || ch == '[') && serde_json::from_str::<serde_json::Value>(&body[i..]).is_ok() {
+            return &body[i..];
+        }
     }
+    body.trim()
 }
 
 async fn check_model_supports_tools(model_id: &str) -> Result<bool> {
