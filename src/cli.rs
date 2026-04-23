@@ -66,6 +66,9 @@ pub enum Commands {
 
         #[arg(long, help = "Disable streaming")]
         no_stream: bool,
+
+        #[arg(long, help = "System message to inject before the user message")]
+        system: Option<String>,
     },
     Chat,
     Tui,

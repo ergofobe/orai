@@ -5,14 +5,11 @@ use crate::attachment::load_attachment;
 use crate::client::{Message, OpenRouterClient};
 
 pub async fn run_prompt(cli: &crate::cli::Cli, prompt_args: &crate::cli::Commands) -> Result<()> {
-    let prompt_text = match prompt_args {
-        crate::cli::Commands::Prompt { prompt, .. } => prompt.join(" "),
+    let (prompt_text, no_stream, system) = match prompt_args {
+        crate::cli::Commands::Prompt { prompt, no_stream, system } => {
+            (prompt.join(" "), *no_stream, system.clone())
+        }
         _ => unreachable!(),
-    };
-
-    let no_stream = match prompt_args {
-        crate::cli::Commands::Prompt { no_stream, .. } => *no_stream,
-        _ => false,
     };
 
     let mut attachments = Vec::new();
@@ -23,12 +20,21 @@ pub async fn run_prompt(cli: &crate::cli::Cli, prompt_args: &crate::cli::Command
     }
 
     let client = OpenRouterClient::new(cli).await?;
-    let mut messages = vec![Message {
+    let mut messages = Vec::new();
+    if let Some(sys) = system {
+        messages.push(Message {
+            role: "system".to_string(),
+            content: Some(serde_json::Value::String(sys)),
+            tool_calls: None,
+            tool_call_id: None,
+        });
+    }
+    messages.push(Message {
         role: "user".to_string(),
         content: Some(serde_json::Value::String(prompt_text.clone())),
         tool_calls: None,
         tool_call_id: None,
-    }];
+    });
 
     if no_stream {
         let response = client
