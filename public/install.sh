@@ -87,10 +87,10 @@ if [ "$PLATFORM" = "macOS" ]; then
     if command -v brew >/dev/null 2>&1; then
         info "Homebrew detected. Installing via Homebrew..."
         if [ "$DRY_RUN" = "1" ]; then
-            info "Would run: brew install ergofobe/orai/orai"
+            info "Would run: brew install ergofobe/orai"
             exit 0
         fi
-        brew install ergofobe/orai/orai
+        brew install ergofobe/orai
         info "orai installed via Homebrew."
         orai --version
         exit 0
@@ -106,7 +106,7 @@ if [ "$PLATFORM" = "macOS" ]; then
                 info "Installing Homebrew..."
                 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
                 if command -v brew >/dev/null 2>&1; then
-                    brew install ergofobe/orai/orai
+                    brew install ergofobe/orai
                     info "orai installed via Homebrew."
                     orai --version
                     exit 0

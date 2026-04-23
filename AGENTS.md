@@ -73,7 +73,7 @@ src/
 
 - **Linux:** musl (universal) + glibc binaries via GitHub Releases
 - **Android/Termux:** `aarch64-linux-android` + `x86_64-linux-android` binaries
-- **macOS:** Homebrew tap (`ergofobe/orai/orai`) + direct binary download
+- **macOS:** Homebrew tap (`ergofobe/orai`) + direct binary download
 - **Install script:** `https://ergofobe.github.io/orai/install.sh`
 - **GitHub Actions:** `.github/workflows/release.yml` builds on tag push, `.github/workflows/pages.yml` deploys landing page
 
