@@ -11,7 +11,8 @@ curl -fsSL https://ergofobe.github.io/orai/install.sh | sh
 **macOS with Homebrew:**
 
 ```bash
-brew install ergofobe/orai
+brew tap ergofobe/orai
+brew install orai
 ```
 
 **Options:**
